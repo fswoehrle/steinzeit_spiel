@@ -7,7 +7,7 @@
         body {
             margin: 0;
             padding: 20px;
-            background-color: #2b82c9; /* Blaues Meer außen */
+            background-color: #2b82c9;
             font-family: Arial, sans-serif;
             display: flex;
             flex-direction: column;
@@ -30,19 +30,17 @@
             text-align: center;
         }
 
-        /* Container für Tabellen und Spielfeld nebeneinander */
         .game-container {
             display: flex;
             flex-direction: row;
             gap: 20px;
-            background-color: #38bdf8; /* Küstenwasser */
+            background-color: #38bdf8;
             padding: 20px;
             border-radius: 15px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.4);
             align-items: stretch;
         }
 
-        /* Gemeinsamer Style für die Seiten-Panels */
         .side-panel {
             background-color: white;
             padding: 20px;
@@ -83,21 +81,19 @@
             width: 35px;
         }
 
-        /* Die Insel (10 Spalten x 6 Zeilen) */
         .island-grid {
             display: grid;
             grid-template-columns: repeat(10, 50px);
             grid-template-rows: repeat(6, 50px);
             gap: 3px;
-            background-color: #eab308; /* Sandstrand-Rahmen */
+            background-color: #eab308;
             padding: 10px;
             border-radius: 10px;
             position: relative;
         }
 
-        /* Einzelne Inselfelder */
         .field {
-            background-color: #4ade80; /* Grünes Gras */
+            background-color: #4ade80;
             width: 50px;
             height: 50px;
             border-radius: 4px;
@@ -109,14 +105,12 @@
             transition: background-color 0.2s;
         }
 
-        /* Feld mit Spieler */
         .field.player-here {
             background-color: #86efac;
         }
 
-        /* Wenn der Spieler beschäftigt ist (Sammeln/Warten) */
         .field.player-busy {
-            background-color: #fef08a; /* Gelb beim Abbauen */
+            background-color: #fef08a;
         }
 
         .controls-hint {
@@ -127,7 +121,6 @@
             padding-top: 15px;
         }
 
-        /* Overlay bei Game Over */
         .game-over-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -159,7 +152,6 @@
     <p class="subtitle">Nutze die Pfeiltasten (↑ ↓ ← →) zum Steuern. Stehe still zum Regenerieren.</p>
 
     <div class="game-container">
-        <!-- LINKE SEITE: Attribute -->
         <div class="side-panel">
             <h2>❤️ Status</h2>
             <table class="status-table">
@@ -177,7 +169,6 @@
             <div class="controls-hint" id="status-action">Bereit</div>
         </div>
 
-        <!-- MITTE: Insel Spielfeld -->
         <div class="island-grid" id="island">
             <div class="game-over-overlay" id="game-over">
                 <h2>Game Over</h2>
@@ -186,7 +177,6 @@
             </div>
         </div>
 
-        <!-- RECHTE SEITE: Inventar Tabelle -->
         <div class="side-panel">
             <h2>🎒 Inventar</h2>
             <table class="inventory-table">
@@ -220,16 +210,17 @@
         const ROWS = 6;
         const TOTAL_FIELDS = COLS * ROWS;
 
+        const MAX_POWER = 100;
+        const MAX_HEALTH = 10;
+
         let board = Array(TOTAL_FIELDS).fill('');
         let playerIndex = 0;
-        let isBusy = false; // Blockiert Eingaben während des Wartens
+        let isBusy = false;
         let isGameOver = false;
 
-        // Attribute & Inventar
         let stats = { power: 100, health: 10 };
         let inventory = { '🌳': 0, '🪨': 0, '🦣': 0, '🦴': 0 };
 
-        // Timer-Referenzen
         let idleTimer = null;
 
         const idMapping = {
@@ -246,24 +237,23 @@
             isBusy = false;
             isGameOver = false;
 
+            clearTimeout(idleTimer);
+
             document.getElementById('game-over').style.display = 'none';
-            updateStatsDisplay();
-            
-            // Inventaranzeige zurücksetzen
+            updateStatsDisplay('Bereit');
+
             for (let key in inventory) {
                 document.getElementById(idMapping[key]).innerText = 0;
             }
 
             let symbols = [];
             for (let i = 0; i < 10; i++) symbols.push('🌳');
-            for (let i = 0; i < 5; i++)  symbols.push('🪨');
-            for (let i = 0; i < 4; i++)  symbols.push('🦣');
-            for (let i = 0; i < 6; i++)  symbols.push('🦴');
+            for (let i = 0; i < 5; i++) symbols.push('🪨');
+            for (let i = 0; i < 4; i++) symbols.push('🦣');
+            for (let i = 0; i < 6; i++) symbols.push('🦴');
             symbols.push('🧍');
 
-            while (symbols.length < TOTAL_FIELDS) {
-                symbols.push('');
-            }
+            while (symbols.length < TOTAL_FIELDS) symbols.push('');
 
             for (let i = symbols.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -280,14 +270,21 @@
             }
 
             renderGrid();
-            startIdleTimer(); // Ersten Idle-Timer starten
+            startIdleTimer();
         }
 
-        function updateStatsDisplay() {
+        function updateStatsDisplay(actionText = null) {
+            stats.power = Math.max(0, Math.min(MAX_POWER, stats.power));
+            stats.health = Math.max(0, Math.min(MAX_HEALTH, stats.health));
+
             document.getElementById('stat-power').innerText = stats.power;
             document.getElementById('stat-health').innerText = stats.health;
 
-            if (stats.health <= 0) {
+            if (actionText !== null) {
+                document.getElementById('status-action').innerText = actionText;
+            }
+
+            if (stats.health <= 0 && !isGameOver) {
                 isGameOver = true;
                 document.getElementById('game-over').style.display = 'flex';
                 clearTimeout(idleTimer);
@@ -296,7 +293,6 @@
 
         function renderGrid() {
             const grid = document.getElementById('island');
-            // Behalte das Game Over Overlay und lösche nur die Felder
             const fields = grid.querySelectorAll('.field');
             fields.forEach(f => f.remove());
 
@@ -316,6 +312,91 @@
             }
         }
 
+        function startIdleTimer() {
+            clearTimeout(idleTimer);
+
+            idleTimer = setTimeout(() => {
+                if (isGameOver || isBusy) return;
+
+                stats.power += 1;
+                stats.health += 1;
+                updateStatsDisplay('Regeneration (+1 Kraft, +1 Gesundheit)');
+                renderGrid();
+
+                startIdleTimer();
+            }, 5000);
+        }
+
         function movePlayer(dRow, dCol) {
             if (isBusy || isGameOver) return;
 
+            const currentRow = Math.floor(playerIndex / COLS);
+            const currentCol = playerIndex % COLS;
+
+            const newRow = currentRow + dRow;
+            const newCol = currentCol + dCol;
+
+            if (newRow < 0 || newRow >= ROWS || newCol < 0 || newCol >= COLS) return;
+
+            const newIndex = newRow * COLS + newCol;
+            const target = board[newIndex];
+
+            clearTimeout(idleTimer);
+
+            if (target === '') {
+                playerIndex = newIndex;
+                updateStatsDisplay('Bewegt');
+                renderGrid();
+                startIdleTimer();
+                return;
+            }
+
+            let waitMs = 2000;
+            if (target === '🦣') waitMs = 5000;
+
+            isBusy = true;
+            playerIndex = newIndex;
+            updateStatsDisplay(`Sammeln ${target}... (${waitMs / 1000}s)`);
+            renderGrid();
+
+            setTimeout(() => {
+                if (isGameOver) return;
+
+                inventory[target] += 1;
+                document.getElementById(idMapping[target]).innerText = inventory[target];
+
+                if (target === '🦣') {
+                    stats.power -= 5;
+
+                    if (Math.random() < 0.5) {
+                        stats.health -= 4;
+                        updateStatsDisplay('Mammutkampf: -5 Kraft, -4 Gesundheit');
+                    } else {
+                        updateStatsDisplay('Mammutkampf: -5 Kraft, kein Schaden');
+                    }
+                } else {
+                    updateStatsDisplay(`Gesammelt: ${target}`);
+                }
+
+                board[newIndex] = '';
+
+                isBusy = false;
+                renderGrid();
+
+                if (!isGameOver) {
+                    startIdleTimer();
+                }
+            }, waitMs);
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowUp') movePlayer(-1, 0);
+            else if (event.key === 'ArrowDown') movePlayer(1, 0);
+            else if (event.key === 'ArrowLeft') movePlayer(0, -1);
+            else if (event.key === 'ArrowRight') movePlayer(0, 1);
+        });
+
+        initGame();
+    </script>
+</body>
+</html>
