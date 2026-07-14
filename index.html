@@ -144,6 +144,18 @@
             cursor: pointer;
             font-weight: bold;
         }
+
+        .build-controls {
+            margin-top: 15px;
+        }
+
+        #build-tent-btn {
+            padding: 10px 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -205,6 +217,10 @@
         </div>
     </div>
 
+    <div class="build-controls">
+        <button id="build-tent-btn" onclick="buildTent()">🏕️ Lager erstellen (3 🌳 + 4 🦣)</button>
+    </div>
+
     <script>
         const COLS = 10;
         const ROWS = 6;
@@ -212,6 +228,8 @@
 
         const MAX_POWER = 100;
         const MAX_HEALTH = 10;
+        const TENT_SYMBOL = '🏕️';
+        const MAX_TENTS = 2;
 
         let board = Array(TOTAL_FIELDS).fill('');
         let playerIndex = 0;
@@ -222,6 +240,7 @@
         let inventory = { '🌳': 0, '🪨': 0, '🦣': 0, '🦴': 0 };
 
         let idleTimer = null;
+        let tentHealTimer = null;
 
         const idMapping = {
             '🌳': 'count-tree',
@@ -230,6 +249,15 @@
             '🦴': 'count-bone'
         };
 
+        function countTentsOnBoard() {
+            return board.filter(cell => cell === TENT_SYMBOL).length;
+        }
+
+        function stopAllRegenTimers() {
+            clearTimeout(idleTimer);
+            clearTimeout(tentHealTimer);
+        }
+
         function initGame() {
             board = Array(TOTAL_FIELDS).fill('');
             stats = { power: 100, health: 10 };
@@ -237,7 +265,7 @@
             isBusy = false;
             isGameOver = false;
 
-            clearTimeout(idleTimer);
+            stopAllRegenTimers();
 
             document.getElementById('game-over').style.display = 'none';
             updateStatsDisplay('Bereit');
@@ -287,7 +315,7 @@
             if (stats.health <= 0 && !isGameOver) {
                 isGameOver = true;
                 document.getElementById('game-over').style.display = 'flex';
-                clearTimeout(idleTimer);
+                stopAllRegenTimers();
             }
         }
 
@@ -303,7 +331,8 @@
                 if (i === playerIndex) {
                     field.classList.add('player-here');
                     if (isBusy) field.classList.add('player-busy');
-                    field.innerHTML = '🧍';
+                    if (board[i] === TENT_SYMBOL) field.innerHTML = '🏕️🧍';
+                    else field.innerHTML = '🧍';
                 } else if (board[i] !== '') {
                     field.innerHTML = board[i];
                 }
@@ -318,13 +347,61 @@
             idleTimer = setTimeout(() => {
                 if (isGameOver || isBusy) return;
 
-                stats.power += 1;
-                stats.health += 1;
-                updateStatsDisplay('Regeneration (+1 Kraft, +1 Gesundheit)');
-                renderGrid();
-
-                startIdleTimer();
+                if (board[playerIndex] === '') {
+                    stats.power += 1;
+                    stats.health += 1;
+                    updateStatsDisplay('Regeneration (+1 Kraft, +1 Gesundheit)');
+                    renderGrid();
+                    startIdleTimer();
+                }
             }, 5000);
+        }
+
+        function startTentHealTimer() {
+            clearTimeout(tentHealTimer);
+
+            tentHealTimer = setTimeout(() => {
+                if (isGameOver || isBusy) return;
+
+                if (board[playerIndex] === TENT_SYMBOL) {
+                    stats.health += 1;
+                    updateStatsDisplay('Im Lager: +1 Gesundheit');
+                    renderGrid();
+                    startTentHealTimer();
+                }
+            }, 3000);
+        }
+
+        function buildTent() {
+            if (isGameOver || isBusy) return;
+
+            if (countTentsOnBoard() >= MAX_TENTS) {
+                updateStatsDisplay('Maximal 2 Lager erlaubt');
+                return;
+            }
+
+            if (board[playerIndex] !== '') {
+                updateStatsDisplay('Lagerbau nur auf leerem Feld möglich');
+                return;
+            }
+
+            if (inventory['🌳'] < 3 || inventory['🦣'] < 4) {
+                updateStatsDisplay('Nicht genug Vorrat: 3 🌳 und 4 🦣 benötigt');
+                return;
+            }
+
+            inventory['🌳'] -= 3;
+            inventory['🦣'] -= 4;
+            document.getElementById(idMapping['🌳']).innerText = inventory['🌳'];
+            document.getElementById(idMapping['🦣']).innerText = inventory['🦣'];
+
+            board[playerIndex] = TENT_SYMBOL;
+
+            updateStatsDisplay(`Lager erstellt (${countTentsOnBoard()}/${MAX_TENTS})`);
+            renderGrid();
+
+            stopAllRegenTimers();
+            startTentHealTimer();
         }
 
         function movePlayer(dRow, dCol) {
@@ -341,13 +418,16 @@
             const newIndex = newRow * COLS + newCol;
             const target = board[newIndex];
 
-            clearTimeout(idleTimer);
+            stopAllRegenTimers();
 
-            if (target === '') {
+            if (target === '' || target === TENT_SYMBOL) {
                 playerIndex = newIndex;
-                updateStatsDisplay('Bewegt');
+                updateStatsDisplay(target === TENT_SYMBOL ? 'Im Lager angekommen' : 'Bewegt');
                 renderGrid();
-                startIdleTimer();
+
+                if (board[playerIndex] === TENT_SYMBOL) startTentHealTimer();
+                else startIdleTimer();
+
                 return;
             }
 
@@ -384,7 +464,8 @@
                 renderGrid();
 
                 if (!isGameOver) {
-                    startIdleTimer();
+                    if (board[playerIndex] === TENT_SYMBOL) startTentHealTimer();
+                    else startIdleTimer();
                 }
             }, waitMs);
         }
