@@ -230,6 +230,11 @@
         const MAX_HEALTH = 10;
         const TENT_SYMBOL = '🏕️';
         const MAX_TENTS = 2;
+        const TIGER_SYMBOL = '🐅';
+        const RESOURCE_RESPAWN_MS = 20000;
+        const TIGER_SPAWN_MS = 60000;
+        const TIGER_LIFETIME_MS = 15000;
+        const TIGER_MOVE_MS = 1000;
 
         let board = Array(TOTAL_FIELDS).fill('');
         let playerIndex = 0;
@@ -241,6 +246,13 @@
 
         let idleTimer = null;
         let tentHealTimer = null;
+
+        let tigerIndex = -1;
+        let tigerMoveTimer = null;
+        let tigerLifeTimer = null;
+        let tigerSpawnInterval = null;
+
+        const resourceSymbols = ['🌳', '🪨', '🦣', '🦴'];
 
         const idMapping = {
             '🌳': 'count-tree',
@@ -258,14 +270,148 @@
             clearTimeout(tentHealTimer);
         }
 
+        function clearTigerFromBoard() {
+            if (tigerIndex >= 0 && board[tigerIndex] === TIGER_SYMBOL) {
+                board[tigerIndex] = '';
+            }
+            tigerIndex = -1;
+        }
+
+        function stopTigerTimers() {
+            clearTimeout(tigerMoveTimer);
+            clearTimeout(tigerLifeTimer);
+            clearInterval(tigerSpawnInterval);
+        }
+
+        function getRandomFreeFieldIndex(excludePlayer = false) {
+            const free = [];
+            for (let i = 0; i < TOTAL_FIELDS; i++) {
+                if (board[i] !== '') continue;
+                if (excludePlayer && i === playerIndex) continue;
+                free.push(i);
+            }
+            if (free.length === 0) return -1;
+            return free[Math.floor(Math.random() * free.length)];
+        }
+
+        function scheduleResourceRespawn(symbol) {
+            setTimeout(() => {
+                if (isGameOver) return;
+                const idx = getRandomFreeFieldIndex(true);
+                if (idx === -1) return;
+                board[idx] = symbol;
+                renderGrid();
+            }, RESOURCE_RESPAWN_MS);
+        }
+
+        function spawnTiger() {
+            if (isGameOver) return;
+            if (tigerIndex !== -1) return;
+
+            const idx = getRandomFreeFieldIndex(true);
+            if (idx === -1) return;
+
+            tigerIndex = idx;
+            board[tigerIndex] = TIGER_SYMBOL;
+            renderGrid();
+            updateStatsDisplay('Ein Tiger ist aufgetaucht!');
+
+            startTigerMovement();
+
+            tigerLifeTimer = setTimeout(() => {
+                if (isGameOver) return;
+                clearTimeout(tigerMoveTimer);
+                clearTigerFromBoard();
+                renderGrid();
+                updateStatsDisplay('Der Tiger ist verschwunden.');
+            }, TIGER_LIFETIME_MS);
+        }
+
+        function startTigerSpawner() {
+            clearInterval(tigerSpawnInterval);
+            tigerSpawnInterval = setInterval(() => {
+                spawnTiger();
+            }, TIGER_SPAWN_MS);
+        }
+
+        function tigerAttackIfOnPlayer() {
+            if (tigerIndex === playerIndex && !isGameOver) {
+                stats.health -= 8;
+                updateStatsDisplay('Tigerangriff! -8 Gesundheit');
+                if (isGameOver) return true;
+            }
+            return false;
+        }
+
+        function startTigerMovement() {
+            clearTimeout(tigerMoveTimer);
+
+            const step = () => {
+                if (isGameOver) return;
+                if (tigerIndex === -1) return;
+
+                let tigerRow = Math.floor(tigerIndex / COLS);
+                let tigerCol = tigerIndex % COLS;
+                const playerRow = Math.floor(playerIndex / COLS);
+                const playerCol = playerIndex % COLS;
+
+                let nextRow = tigerRow;
+                let nextCol = tigerCol;
+
+                if (Math.abs(playerRow - tigerRow) >= Math.abs(playerCol - tigerCol)) {
+                    if (playerRow > tigerRow) nextRow++;
+                    else if (playerRow < tigerRow) nextRow--;
+                    else if (playerCol > tigerCol) nextCol++;
+                    else if (playerCol < tigerCol) nextCol--;
+                } else {
+                    if (playerCol > tigerCol) nextCol++;
+                    else if (playerCol < tigerCol) nextCol--;
+                    else if (playerRow > tigerRow) nextRow++;
+                    else if (playerRow < tigerRow) nextRow--;
+                }
+
+                if (nextRow < 0 || nextRow >= ROWS || nextCol < 0 || nextCol >= COLS) {
+                    tigerMoveTimer = setTimeout(step, TIGER_MOVE_MS);
+                    return;
+                }
+
+                const nextIndex = nextRow * COLS + nextCol;
+
+                if (nextIndex !== playerIndex) {
+                    if (board[nextIndex] !== '') {
+                        tigerMoveTimer = setTimeout(step, TIGER_MOVE_MS);
+                        return;
+                    }
+                }
+
+                if (board[tigerIndex] === TIGER_SYMBOL) board[tigerIndex] = '';
+                tigerIndex = nextIndex;
+
+                if (tigerIndex !== playerIndex) {
+                    board[tigerIndex] = TIGER_SYMBOL;
+                }
+
+                const attacked = tigerAttackIfOnPlayer();
+                renderGrid();
+
+                if (!attacked && tigerIndex !== -1) {
+                    tigerMoveTimer = setTimeout(step, TIGER_MOVE_MS);
+                }
+            };
+
+            tigerMoveTimer = setTimeout(step, TIGER_MOVE_MS);
+        }
+
         function initGame() {
             board = Array(TOTAL_FIELDS).fill('');
             stats = { power: 100, health: 10 };
             inventory = { '🌳': 0, '🪨': 0, '🦣': 0, '🦴': 0 };
             isBusy = false;
             isGameOver = false;
+            tigerIndex = -1;
 
             stopAllRegenTimers();
+            stopTigerTimers();
 
             document.getElementById('game-over').style.display = 'none';
             updateStatsDisplay('Bereit');
@@ -299,6 +445,7 @@
 
             renderGrid();
             startIdleTimer();
+            startTigerSpawner();
         }
 
         function updateStatsDisplay(actionText = null) {
@@ -316,6 +463,9 @@
                 isGameOver = true;
                 document.getElementById('game-over').style.display = 'flex';
                 stopAllRegenTimers();
+                stopTigerTimers();
+                clearTigerFromBoard();
+                renderGrid();
             }
         }
 
@@ -425,9 +575,26 @@
                 updateStatsDisplay(target === TENT_SYMBOL ? 'Im Lager angekommen' : 'Bewegt');
                 renderGrid();
 
+                if (tigerAttackIfOnPlayer()) {
+                    renderGrid();
+                    return;
+                }
+
                 if (board[playerIndex] === TENT_SYMBOL) startTentHealTimer();
                 else startIdleTimer();
 
+                return;
+            }
+
+            if (target === TIGER_SYMBOL) {
+                playerIndex = newIndex;
+                tigerAttackIfOnPlayer();
+                renderGrid();
+
+                if (!isGameOver) {
+                    if (board[playerIndex] === TENT_SYMBOL) startTentHealTimer();
+                    else startIdleTimer();
+                }
                 return;
             }
 
@@ -444,6 +611,10 @@
 
                 inventory[target] += 1;
                 document.getElementById(idMapping[target]).innerText = inventory[target];
+
+                if (resourceSymbols.includes(target)) {
+                    scheduleResourceRespawn(target);
+                }
 
                 if (target === '🦣') {
                     stats.power -= 5;
@@ -464,6 +635,11 @@
                 renderGrid();
 
                 if (!isGameOver) {
+                    if (tigerAttackIfOnPlayer()) {
+                        renderGrid();
+                        return;
+                    }
+
                     if (board[playerIndex] === TENT_SYMBOL) startTentHealTimer();
                     else startIdleTimer();
                 }
