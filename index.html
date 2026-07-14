@@ -1,0 +1,321 @@
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insel Entdecker - Survival Edition</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #2b82c9; /* Blaues Meer außen */
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            user-select: none;
+        }
+
+        h1 {
+            color: white;
+            margin: 0 0 5px 0;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #e0f2fe;
+            margin: 0 0 20px 0;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        /* Container für Tabellen und Spielfeld nebeneinander */
+        .game-container {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            background-color: #38bdf8; /* Küstenwasser */
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            align-items: stretch;
+        }
+
+        /* Gemeinsamer Style für die Seiten-Panels */
+        .side-panel {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 180px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .side-panel h2 {
+            margin: 0 0 10px 0;
+            color: #374151;
+            font-size: 18px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 5px;
+        }
+
+        .status-table, .inventory-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .status-table td, .inventory-table td {
+            padding: 8px 0;
+            font-size: 16px;
+            color: #4b5563;
+        }
+
+        .value-cell {
+            font-weight: bold;
+            text-align: right;
+            color: #1f2937;
+        }
+
+        .item-icon {
+            font-size: 22px;
+            width: 35px;
+        }
+
+        /* Die Insel (10 Spalten x 6 Zeilen) */
+        .island-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 50px);
+            grid-template-rows: repeat(6, 50px);
+            gap: 3px;
+            background-color: #eab308; /* Sandstrand-Rahmen */
+            padding: 10px;
+            border-radius: 10px;
+            position: relative;
+        }
+
+        /* Einzelne Inselfelder */
+        .field {
+            background-color: #4ade80; /* Grünes Gras */
+            width: 50px;
+            height: 50px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+            transition: background-color 0.2s;
+        }
+
+        /* Feld mit Spieler */
+        .field.player-here {
+            background-color: #86efac;
+        }
+
+        /* Wenn der Spieler beschäftigt ist (Sammeln/Warten) */
+        .field.player-busy {
+            background-color: #fef08a; /* Gelb beim Abbauen */
+        }
+
+        .controls-hint {
+            margin-top: auto;
+            font-size: 11px;
+            color: #9ca3af;
+            text-align: center;
+            padding-top: 15px;
+        }
+
+        /* Overlay bei Game Over */
+        .game-over-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 10;
+        }
+
+        .game-over-overlay button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Insel Entdecker - Survival</h1>
+    <p class="subtitle">Nutze die Pfeiltasten (↑ ↓ ← →) zum Steuern. Stehe still zum Regenerieren.</p>
+
+    <div class="game-container">
+        <!-- LINKE SEITE: Attribute -->
+        <div class="side-panel">
+            <h2>❤️ Status</h2>
+            <table class="status-table">
+                <tr>
+                    <td class="item-icon">⚡</td>
+                    <td>Kraft</td>
+                    <td class="value-cell" id="stat-power">100</td>
+                </tr>
+                <tr>
+                    <td class="item-icon">❤️</td>
+                    <td>Gesundheit</td>
+                    <td class="value-cell" id="stat-health">10</td>
+                </tr>
+            </table>
+            <div class="controls-hint" id="status-action">Bereit</div>
+        </div>
+
+        <!-- MITTE: Insel Spielfeld -->
+        <div class="island-grid" id="island">
+            <div class="game-over-overlay" id="game-over">
+                <h2>Game Over</h2>
+                <p>Deine Gesundheit ist auf 0 gefallen.</p>
+                <button onclick="initGame()">Neu starten</button>
+            </div>
+        </div>
+
+        <!-- RECHTE SEITE: Inventar Tabelle -->
+        <div class="side-panel">
+            <h2>🎒 Inventar</h2>
+            <table class="inventory-table">
+                <tr>
+                    <td class="item-icon">🌳</td>
+                    <td>Bäume</td>
+                    <td class="value-cell" id="count-tree">0</td>
+                </tr>
+                <tr>
+                    <td class="item-icon">🪨</td>
+                    <td>Steine</td>
+                    <td class="value-cell" id="count-stone">0</td>
+                </tr>
+                <tr>
+                    <td class="item-icon">🦣</td>
+                    <td>Mammuts</td>
+                    <td class="value-cell" id="count-mammoth">0</td>
+                </tr>
+                <tr>
+                    <td class="item-icon">🦴</td>
+                    <td>Knochen</td>
+                    <td class="value-cell" id="count-bone">0</td>
+                </tr>
+            </table>
+            <div class="controls-hint">Pfeiltasten zum Steuern</div>
+        </div>
+    </div>
+
+    <script>
+        const COLS = 10;
+        const ROWS = 6;
+        const TOTAL_FIELDS = COLS * ROWS;
+
+        let board = Array(TOTAL_FIELDS).fill('');
+        let playerIndex = 0;
+        let isBusy = false; // Blockiert Eingaben während des Wartens
+        let isGameOver = false;
+
+        // Attribute & Inventar
+        let stats = { power: 100, health: 10 };
+        let inventory = { '🌳': 0, '🪨': 0, '🦣': 0, '🦴': 0 };
+
+        // Timer-Referenzen
+        let idleTimer = null;
+
+        const idMapping = {
+            '🌳': 'count-tree',
+            '🪨': 'count-stone',
+            '🦣': 'count-mammoth',
+            '🦴': 'count-bone'
+        };
+
+        function initGame() {
+            board = Array(TOTAL_FIELDS).fill('');
+            stats = { power: 100, health: 10 };
+            inventory = { '🌳': 0, '🪨': 0, '🦣': 0, '🦴': 0 };
+            isBusy = false;
+            isGameOver = false;
+
+            document.getElementById('game-over').style.display = 'none';
+            updateStatsDisplay();
+            
+            // Inventaranzeige zurücksetzen
+            for (let key in inventory) {
+                document.getElementById(idMapping[key]).innerText = 0;
+            }
+
+            let symbols = [];
+            for (let i = 0; i < 10; i++) symbols.push('🌳');
+            for (let i = 0; i < 5; i++)  symbols.push('🪨');
+            for (let i = 0; i < 4; i++)  symbols.push('🦣');
+            for (let i = 0; i < 6; i++)  symbols.push('🦴');
+            symbols.push('🧍');
+
+            while (symbols.length < TOTAL_FIELDS) {
+                symbols.push('');
+            }
+
+            for (let i = symbols.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [symbols[i], symbols[j]] = [symbols[j], symbols[i]];
+            }
+
+            for (let i = 0; i < TOTAL_FIELDS; i++) {
+                if (symbols[i] === '🧍') {
+                    playerIndex = i;
+                    board[i] = '';
+                } else {
+                    board[i] = symbols[i];
+                }
+            }
+
+            renderGrid();
+            startIdleTimer(); // Ersten Idle-Timer starten
+        }
+
+        function updateStatsDisplay() {
+            document.getElementById('stat-power').innerText = stats.power;
+            document.getElementById('stat-health').innerText = stats.health;
+
+            if (stats.health <= 0) {
+                isGameOver = true;
+                document.getElementById('game-over').style.display = 'flex';
+                clearTimeout(idleTimer);
+            }
+        }
+
+        function renderGrid() {
+            const grid = document.getElementById('island');
+            // Behalte das Game Over Overlay und lösche nur die Felder
+            const fields = grid.querySelectorAll('.field');
+            fields.forEach(f => f.remove());
+
+            for (let i = 0; i < TOTAL_FIELDS; i++) {
+                const field = document.createElement('div');
+                field.className = 'field';
+
+                if (i === playerIndex) {
+                    field.classList.add('player-here');
+                    if (isBusy) field.classList.add('player-busy');
+                    field.innerHTML = '🧍';
+                } else if (board[i] !== '') {
+                    field.innerHTML = board[i];
+                }
+
+                grid.appendChild(field);
+            }
+        }
+
+        function movePlayer(dRow, dCol) {
+            if (isBusy || isGameOver) return;
+
